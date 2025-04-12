@@ -1,7 +1,7 @@
 import os
 import json
 import time
-import threadin
+import threading
 import locale
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -170,6 +170,7 @@ traducoes = {
 if idioma not in traducoes:
     idioma = 'en'
 t = traducoes[idioma]
+
 class DemonRankingApp:
     def __init__(self, root):
         self.root = root
@@ -307,12 +308,21 @@ class DemonRankingApp:
         self.label_tempo.config(text="")
         self.tabela.delete(*self.tabela.get_children())
 
+        self.time_vars = {
+            'start_time': time.time(),
+            'elapsed': 0,
+            'eta': 0,
+            'running': True
+        }
+
+        time_thread = threading.Thread(target=self._update_time_display, daemon = True)
+        time_thread.start()
+
         try:
-            start_time = time.time()
             with open(self.arquivo_json, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            demons = [lvl for lvl in data if lvl.get("demon", False) and lvl.get("percentage", 0) == 100]
+            demons = [lvl for lvl in data if lvl.get("demon", False) and lvl.get("percentage", 0) == 100 and not lvl.get("platformer", False)]
             total = len(demons)
             if total == 0:
                 messagebox.showerror(t['titulo'], "Nenhum demon clássico vencido encontrado.")
@@ -320,11 +330,21 @@ class DemonRankingApp:
 
             OFFICIAL_IDS = {14: 1, 18: 2, 20: 3}
             resultados = []
+            processed_ids = set()
 
             for i, demon in enumerate(demons):
+                #print(i)
+                if not self.time_vars['running']:
+                    return
+                
                 lvl_id = OFFICIAL_IDS.get(demon["id"], demon["id"])
+                if lvl_id in processed_ids:
+                    continue
+
+                processed_ids.add(lvl_id)
+
                 try:
-                    response = requests.get(f"https://gdladder.com/api/level/{lvl_id}", timeout=5)
+                    response = requests.get(f"https://gdladder.com/api/level/{lvl_id}")
                     if response.status_code == 200:
                         api_data = response.json()
                         resultados.append({
@@ -334,13 +354,13 @@ class DemonRankingApp:
                             "Rating": api_data.get("Rating", 0),
                             "Enjoyment": api_data.get("Enjoyment", 0)
                         })
-                except:
-                    continue
+                except Exception as e:
+                    with open('error_log.txt', 'w') as f:
+                        f.write(f"Error fetching ID {lvl_id}: {str(e)}")
 
                 self.progress["value"] = (i + 1) / total * 100
-                elapsed = time.time() - start_time
-                eta = (elapsed / (i + 1)) * (total - (i + 1))
-                self.label_tempo.config(text=f"{t['tempo_decorrido']} {int(elapsed)}s    {t['tempo_estimado']} {int(eta)}s")
+                cur_elapsed = time.time() - self.time_vars['start_time']
+                self.time_vars['eta'] = (cur_elapsed / (i+1)) * (total - (i+1))
                 self.root.update_idletasks()
 
             resultados.sort(key=lambda x: x['Rating'] if x['Rating'] is not None else -1, reverse=True)
@@ -351,6 +371,20 @@ class DemonRankingApp:
                                                       item["Difficulty"], item["Rating"], item["Enjoyment"]))
         except Exception as e:
             messagebox.showerror(t['titulo'], f"{t['erro_json']}\n{str(e)}")
+        finally:
+            self.time_vars['running'] = False
+
+    def _update_time_display(self):
+        while self.time_vars.get('running', False):
+            elapsed = time.time() - self.time_vars['start_time']
+            self.time_vars['elapsed'] = elapsed
+
+            time_text = f"{t['tempo_decorrido']} {int(elapsed)}s    {t['tempo_estimado']} {int(self.time_vars['eta'])}s"
+            self.label_tempo.config(text=time_text) 
+
+            self.root.update_idletasks()
+            time.sleep(1)
+    
     def salvar_txt(self):
         if not hasattr(self, 'resultados') or not self.resultados:
             return
