@@ -1,7 +1,7 @@
 import os
 import json
 import time
-import threading
+import threadin
 import locale
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -9,7 +9,6 @@ import webbrowser
 import requests
 from pathlib import Path
 
-# Detecta idioma salvo pelo instalador
 idioma = "en"
 try:
     with open("lang.txt", "r", encoding="utf-8") as f:
@@ -17,7 +16,6 @@ try:
 except:
     idioma = locale.getdefaultlocale()[0][:2]
 
-# Traduções multilíngues
 traducoes = {
     'pt': {
         'titulo': 'GD DEMONS RANKING',
@@ -169,7 +167,6 @@ traducoes = {
     }
 }
 
-# Aplica idioma selecionado
 if idioma not in traducoes:
     idioma = 'en'
 t = traducoes[idioma]
